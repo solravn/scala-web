@@ -37,7 +37,7 @@ implicit val pointEncoder: Encoder[Point] = (p: Point) =>
   (p.x -> p.y).asJson
 
 val plot = new Plot(
-  (for { i <- 1 to 5; j <- 1 to 5 } yield Point(i,j)).toVect
+  (for { i <- 1 to 5; j <- 1 to 5 } yield Point(i,j)).toVector)
 
 val rawJson = plot.asJson.noSpaces
 
