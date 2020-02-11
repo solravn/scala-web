@@ -1,12 +1,15 @@
 import cats.data.Kleisli
 import cats.effect._
 import cats.implicits._
-import org.http4s.{HttpRoutes, Request, Response}
+import org.http4s.{Header, HttpRoutes, Request, Response}
 import org.http4s.syntax._
 import org.http4s.dsl.io._
 import org.http4s.implicits._
+import org.http4s.headers._
 import org.http4s.server.blaze._
+import io.circe._
 import io.circe.syntax._
+import io.circe.parser._
 import io.circe.generic.auto._
 import ru.pimpay._
 
@@ -16,15 +19,13 @@ object Main extends IOApp {
     case GET -> Root / "hello" / name => Ok(s"Hello, $name ~!!s dsasfsafas !!!!")
 
     case (POST|GET) -> Root / "db" => {
-      Thread.sleep(4000)
-      val dbS = ServiceState("dbm", active = true, "8080")
-      Ok(dbS.asJson.noSpaces)
+      /* Thread.sleep(4000) */
+      json(ServiceStatus("dbm1", "ok"))
     };
 
     case GET -> Root / "api" => {
-      Thread.sleep(4000);
-      val apiS = ServiceState("platform.api", active = false, "4028")
-      Ok(apiS.asJson.noSpaces)
+//      Thread.sleep(4000);
+      json(ServiceStatus("platform.api", "ok"))
     }
 
     case GET -> Root / "health" => {
@@ -33,15 +34,23 @@ object Main extends IOApp {
       val res   = for {
         dbFiber    <- dbIO.start
         apiFiber   <- apiIO.start
-        dbContent  <- dbFiber.join
-        apiContent <- apiFiber.join
-        db         <- pimpay.parseHealthCheckContent(dbContent)
-        api        <- pimpay.parseHealthCheckContent(apiContent)
-      } yield s"db: $db\r\napi: $api"
+        dbRaw      <- dbFiber.join
+        apiRaw     <- apiFiber.join
+        db  = decode[ServiceStatus](dbRaw)
+        api = decode[ServiceStatus](apiRaw)
+      } yield json(
+        Map(
+          "api" -> api.getOrElse(ServiceStatus("api", "Failed")),
+          "db" -> db.getOrElse(ServiceStatus("db", "Failed"))
+        )
+      )
 
-      Ok(res)
+      res.flatten
     }
   }.orNotFound
+
+  def json[A : Encoder](obj: A): IO[Response[IO]] =
+    Ok(obj.asJson.noSpaces, Header("Content-Type", "application/json"))
 
   def run(args: List[String]): IO[ExitCode] =
     BlazeServerBuilder[IO]

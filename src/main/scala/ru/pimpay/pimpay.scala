@@ -18,11 +18,13 @@ package object pimpay {
   def fetchUrl(url: String): IO[String] = IO.fromFuture(IO(fetchUrlF(url)))
 
   def parseHealthCheckContent(content: String): IO[String] = IO {
-    decode[ServiceState](content)
-      .map(s =>
-        if (s.active) s"${s.name} is OK, port: ${s.port}"
-        else s"${s.name} is not active, port: ${s.port}"
-      )
-      .getOrElse("Service is not responding")
+//    decode[ServiceStatus](content)
+//      .map(s =>
+//        if (s.active) s"${s.name} is OK, port: ${s.port}"
+//        else s"${s.name} is not active, port: ${s.port}"
+//      )
+//      .getOrElse("Service is not responding")
+
+    "ok"
   }
 }
