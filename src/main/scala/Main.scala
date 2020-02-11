@@ -15,38 +15,42 @@ import ru.pimpay._
 
 object Main extends IOApp {
 
-  val helloWorldService: Kleisli[IO, Request[IO], Response[IO]] = HttpRoutes.of[IO] {
-    case GET -> Root / "hello" / name => Ok(s"Hello, $name ~!!s dsasfsafas !!!!")
+  val todoService: Kleisli[IO, Request[IO], Response[IO]] = HttpRoutes.of[IO] {
 
-    case (POST|GET) -> Root / "db" => {
-      /* Thread.sleep(4000) */
-      json(ServiceStatus("dbm1", "ok"))
-    };
+    case GET -> Root / "todo" => ???
+    case GET -> Root / "todo" / IntVar(id) => ???
+    case req @ POST -> Root / "todo" => ???
+    case req @ PATCH -> Root / "todo" / IntVar(id) / "complete" => ???
 
-    case GET -> Root / "api" => {
-//      Thread.sleep(4000);
-      json(ServiceStatus("platform.api", "ok"))
-    }
-
-    case GET -> Root / "health" => {
-      val dbIO  = pimpay.fetchUrl("http://localhost:8080/db")
-      val apiIO = pimpay.fetchUrl("http://localhost:8080/api")
-      val res   = for {
-        dbFiber    <- dbIO.start
-        apiFiber   <- apiIO.start
-        dbRaw      <- dbFiber.join
-        apiRaw     <- apiFiber.join
-        db  = decode[ServiceStatus](dbRaw)
-        api = decode[ServiceStatus](apiRaw)
-      } yield json(
-        Map(
-          "api" -> api.getOrElse(ServiceStatus("api", "Failed")),
-          "db" -> db.getOrElse(ServiceStatus("db", "Failed"))
-        )
-      )
-
-      res.flatten
-    }
+//    case (POST|GET) -> Root / "db" => {
+//      /* Thread.sleep(4000) */
+//      json(ServiceStatus("dbm1", "ok"))
+//    };
+//
+//    case GET -> Root / "api" => {
+////      Thread.sleep(4000);
+//      json(ServiceStatus("platform.api", "ok"))
+//    }
+//
+//    case GET -> Root / "health" => {
+//      val dbIO  = pimpay.fetchUrl("http://localhost:8080/db")
+//      val apiIO = pimpay.fetchUrl("http://localhost:8080/api")
+//      val res   = for {
+//        dbFiber    <- dbIO.start
+//        apiFiber   <- apiIO.start
+//        dbRaw      <- dbFiber.join
+//        apiRaw     <- apiFiber.join
+//        db  = decode[ServiceStatus](dbRaw)
+//        api = decode[ServiceStatus](apiRaw)
+//      } yield json(
+//        Map(
+//          "api" -> api.getOrElse(ServiceStatus("api", "Failed")),
+//          "db" -> db.getOrElse(ServiceStatus("db", "Failed"))
+//        )
+//      )
+//
+//      res.flatten
+//    }
   }.orNotFound
 
   def json[A : Encoder](obj: A): IO[Response[IO]] =
@@ -55,7 +59,7 @@ object Main extends IOApp {
   def run(args: List[String]): IO[ExitCode] =
     BlazeServerBuilder[IO]
       .bindHttp(8080, "localhost")
-      .withHttpApp(helloWorldService)
+      .withHttpApp(todoService)
       .serve
       .compile
       .drain
