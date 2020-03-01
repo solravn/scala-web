@@ -1,60 +1,71 @@
 import cats.data.Kleisli
 import cats.effect._
 import cats.implicits._
+
 import org.http4s.{Header, HttpRoutes, Request, Response}
 import org.http4s.syntax._
 import org.http4s.dsl.io._
 import org.http4s.implicits._
 import org.http4s.headers._
 import org.http4s.server.blaze._
+
 import io.circe._
 import io.circe.syntax._
 import io.circe.parser._
 import io.circe.generic.auto._
+
 import ru.pimpay._
+import ru.pimpay.pimpay.MapTodoRepository
 
 object Main extends IOApp {
 
-  val todoService: Kleisli[IO, Request[IO], Response[IO]] = HttpRoutes.of[IO] {
-
-    case GET -> Root / "todo" => ???
-    case GET -> Root / "todo" / IntVar(id) => ???
-    case req @ POST -> Root / "todo" => ???
-    case req @ PATCH -> Root / "todo" / IntVar(id) / "complete" => ???
-
-//    case (POST|GET) -> Root / "db" => {
-//      /* Thread.sleep(4000) */
-//      json(ServiceStatus("dbm1", "ok"))
-//    };
-//
-//    case GET -> Root / "api" => {
-////      Thread.sleep(4000);
-//      json(ServiceStatus("platform.api", "ok"))
-//    }
-//
-//    case GET -> Root / "health" => {
-//      val dbIO  = pimpay.fetchUrl("http://localhost:8080/db")
-//      val apiIO = pimpay.fetchUrl("http://localhost:8080/api")
-//      val res   = for {
-//        dbFiber    <- dbIO.start
-//        apiFiber   <- apiIO.start
-//        dbRaw      <- dbFiber.join
-//        apiRaw     <- apiFiber.join
-//        db  = decode[ServiceStatus](dbRaw)
-//        api = decode[ServiceStatus](apiRaw)
-//      } yield json(
-//        Map(
-//          "api" -> api.getOrElse(ServiceStatus("api", "Failed")),
-//          "db" -> db.getOrElse(ServiceStatus("db", "Failed"))
-//        )
-//      )
-//
-//      res.flatten
-//    }
-  }.orNotFound
-
-  def json[A : Encoder](obj: A): IO[Response[IO]] =
+  def json[A : Encoder](obj:A): IO[Response[IO]] =
     Ok(obj.asJson.noSpaces, Header("Content-Type", "application/json"))
+
+  implicit class JsonOps[A : Encoder](obj:A) {
+    def jsoned:String = obj.asJson.noSpaces
+  }
+
+  implicit class OptionOps[A : Encoder](opt:Option[A]) {
+    def jsonedOr404(msg404:String = "херня"): IO[Response[IO]] =
+      opt
+        .map(t => Ok(t jsoned, Header("Content-Type", "application/json")))
+        .getOrElse(NotFound(msg404))
+  }
+
+  val repo = new MapTodoRepository {}
+
+  // set dummy todos
+  (for {
+    _ <- repo.append("Test1")
+    _ <- repo.append("Test2")
+  } yield ()).unsafeRunSync()
+
+  val todoService = HttpRoutes.of[IO] {
+
+    case GET -> Root / "todo" => for {
+      todos    <- repo.findAll
+      response <- Ok(todos.jsoned)
+    } yield response
+
+    case GET -> Root / "todo" / IntVar(id) => for {
+      todo     <- repo findById id
+      response <- todo jsonedOr404()
+    } yield response
+
+    case req @ POST -> Root / "todo" => for {
+      msg      <- req.as[String]
+      _        <- repo.append(msg)
+      response <- Ok("Added")
+    } yield response
+
+    case req @ PATCH -> Root / "todo" / IntVar(id) / "complete" => for {
+      todo     <- repo findById id
+      _        <- repo.complete(id)
+      response <- todo jsonedOr404()
+    } yield response
+
+  }.orNotFound
 
   def run(args: List[String]): IO[ExitCode] =
     BlazeServerBuilder[IO]

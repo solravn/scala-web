@@ -35,6 +35,8 @@ package object pimpay {
 
   case class Todo(id: Int, msg: String, status: TodoStatus)
 
+  case class TodoRequest(msg: String)
+
   trait TodoRepository {
     def findAll: IO[List[Todo]]
     def findById(id: Int): IO[Option[Todo]]
@@ -43,17 +45,24 @@ package object pimpay {
   }
 
   class MapTodoRepository extends TodoRepository {
+
     val mmap: MMap[Int, Todo] = MMap()
+
+    var nextId: Int = 1
 
     override def findAll: IO[List[Todo]] = IO(mmap.values.toList)
 
-    override def findById(id: Int): IO[Option[Todo]] = ???
+    override def findById(id: Int): IO[Option[Todo]] = IO(mmap.get(id))
 
     override def append(msg: String): IO[Unit] = IO {
-//      mmap +: Todo(mmap.)
+      mmap(nextId) = Todo(nextId, msg, Pending)
+      nextId = nextId + 1
       ()
     }
 
-    override def complete(id: Int): IO[Unit] = ???
+    override def complete(id: Int): IO[Unit] = IO {
+      mmap(id) = mmap(id).copy(status = Complete)
+      ()
+    }
   }
 }
