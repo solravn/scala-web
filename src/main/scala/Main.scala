@@ -61,9 +61,17 @@ object Main extends IOApp {
 
     case req @ PATCH -> Root / "todo" / IntVar(id) / "complete" => for {
       todo     <- repo findById id
-      _        <- repo.complete(id)
-      response <- todo jsonedOr404()
+      response <- todo.map(t => repo.complete(t.id) *> Ok(s"Completed ${t.id}")).getOrElse(NotFound("Sooooqa!"))
     } yield response
+
+//    case req @ PATCH -> Root / "todo" / IntVar(id) / "complete" => for {
+//      todo     <- repo findById id
+//      _        <- todo match {
+//        case Some(t) => repo.complete(t.id)
+//        case _ => IO()
+//      }
+//      response <- todo jsonedOr404()
+//    } yield response
 
   }.orNotFound
 
