@@ -1,10 +1,14 @@
 package ru.pimpay
 
 import cats.effect._
+import cats.implicits._
+import io.circe._
+import io.circe.syntax._
 import io.circe.parser._
 import io.circe.generic.auto._
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.io.Source
 import scala.collection.mutable.{Map => MMap}
 
 package object pimpay {
@@ -41,7 +45,7 @@ package object pimpay {
     def findAll: IO[List[Todo]]
     def findById(id: Int): IO[Option[Todo]]
     def append(msg: String): IO[Unit]
-    def complete(id: Int): IO[Unit]
+    def complete(id: Int): IO[Option[Unit]]
   }
 
   class MapTodoRepository extends TodoRepository {
@@ -60,9 +64,30 @@ package object pimpay {
       ()
     }
 
-    override def complete(id: Int): IO[Unit] = IO {
-      mmap(id) = mmap(id).copy(status = Complete)
-      ()
+    override def complete(id: Int): IO[Option[Unit]] = IO ( for {
+      todo <- mmap get id
+      _    <- Option { mmap(id) = todo copy (status = Complete) }
+    } yield ())
+  }
+
+  class LocalFileTodoRepository(val path: String) extends TodoRepository {
+
+    protected def readContents: IO[String] = IO {
+      val s = Source.fromFile(path)
+      val r = s.mkString
+      s.close
+      r
     }
+
+    override def findAll: IO[List[Todo]] = for {
+      raw   <- readContents
+      todos = decode[List[Todo]](raw) getOrElse List.empty[Todo]
+    } yield todos
+
+    override def findById(id: Int): IO[Option[Todo]] = IO {???}
+
+    override def append(msg: String): IO[Unit] = IO {???}
+
+    override def complete(id: Int): IO[Option[Unit]] = IO {???}
   }
 }

@@ -16,6 +16,7 @@ import io.circe.generic.auto._
 
 import ru.pimpay._
 import ru.pimpay.pimpay.MapTodoRepository
+import ru.pimpay.pimpay.LocalFileTodoRepository
 
 object Main extends IOApp {
 
@@ -33,7 +34,8 @@ object Main extends IOApp {
         .getOrElse(NotFound(msg404))
   }
 
-  val repo = new MapTodoRepository {}
+//  val repo = new MapTodoRepository {}
+  val repo = new LocalFileTodoRepository("/home/igafurov/projects/scala-web/data/repo.json")
 
   // set dummy todos
   (for {
@@ -55,13 +57,13 @@ object Main extends IOApp {
 
     case req @ POST -> Root / "todo" => for {
       msg      <- req.as[String]
-      _        <- repo.append(msg)
-      response <- Ok("Added")
+      response <- (repo append msg) *> Ok("Added")
     } yield response
 
-    case req @ PATCH -> Root / "todo" / IntVar(id) / "complete" => for {
-      todo     <- repo findById id
-      response <- todo.map(t => repo.complete(t.id) *> Ok(s"Completed ${t.id}")).getOrElse(NotFound("Sooooqa!"))
+    case PATCH -> Root / "todo" / IntVar(id) / "complete" => for {
+      work     <- repo complete id
+      response <- work map { _ => id } jsonedOr404()
+//      response <- todo map { t => repo.complete(t.id) *> Ok(s"Completed ${t.id}") } getOrElse NotFound("Sooooqa!")
     } yield response
 
 //    case req @ PATCH -> Root / "todo" / IntVar(id) / "complete" => for {
