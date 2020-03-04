@@ -1,11 +1,14 @@
 package ru.pimpay
 
+import java.io.PrintWriter
+
 import cats.effect._
 import cats.implicits._
 import io.circe._
 import io.circe.syntax._
 import io.circe.parser._
 import io.circe.generic.auto._
+
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.io.Source
@@ -72,6 +75,8 @@ package object pimpay {
 
   class LocalFileTodoRepository(val path: String) extends TodoRepository {
 
+    type Id = Int
+
     protected def readContents: IO[String] = IO {
       val s = Source.fromFile(path)
       val r = s.mkString
@@ -79,15 +84,37 @@ package object pimpay {
       r
     }
 
+    protected def readDbAsMap: IO[Map[Id,Todo]] = for {
+      raw <- readContents
+      map <- IO.fromEither(decode[Map[Id,Todo]](raw))
+    } yield map
+
     override def findAll: IO[List[Todo]] = for {
-      raw   <- readContents
-      todos = decode[List[Todo]](raw) getOrElse List.empty[Todo]
-    } yield todos
+      map <- readDbAsMap
+    } yield map.values.toList
 
-    override def findById(id: Int): IO[Option[Todo]] = IO {???}
+    override def findById(id: Int): IO[Option[Todo]] = for {
+      map <- readDbAsMap
+    } yield map get id
 
-    override def append(msg: String): IO[Unit] = IO {???}
+    override def append(msg: String): IO[Unit] = for {
+      todos    <- findAll
+      maxId    = if (todos.isEmpty) 0 else (todos maxBy (_.id)).id
+      todo     = Todo(maxId + 1, msg, Pending)
+      newTodos = todos :+ todo
+      jsonRaw  = newTodos.asJson.noSpaces
+      _        <- IO { new PrintWriter(path, "UTF-8") { write(jsonRaw); close(); } }
+    } yield ()
 
-    override def complete(id: Int): IO[Option[Unit]] = IO {???}
+    override def complete(id: Int): IO[Option[Unit]] = for {
+      todos    <- findAll
+      map      = Map(todos map {t => t.id -> t}: _*)
+      todo     = map get id
+      updated  = todo map (_ => map.updated(id, todo.get.copy(status=Complete)))
+      jsonRaw  = updated map (_.toList.asJson.noSpaces)
+      result   <- if (jsonRaw.isDefined) {
+        IO { new PrintWriter(path, "UTF-8") { write(jsonRaw.get); close(); }; Option(()) }
+      } else IO.pure(Option.empty[Unit])
+    } yield result
   }
 }

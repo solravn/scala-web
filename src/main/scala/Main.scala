@@ -1,19 +1,17 @@
 import cats.data.Kleisli
 import cats.effect._
 import cats.implicits._
-
-import org.http4s.{Header, HttpRoutes, Request, Response}
+import fs2.{Stream, text}
+import org.http4s.{Header, HttpRoutes, Request, Response, Status}
 import org.http4s.syntax._
 import org.http4s.dsl.io._
 import org.http4s.implicits._
 import org.http4s.headers._
 import org.http4s.server.blaze._
-
 import io.circe._
 import io.circe.syntax._
 import io.circe.parser._
 import io.circe.generic.auto._
-
 import ru.pimpay._
 import ru.pimpay.pimpay.MapTodoRepository
 import ru.pimpay.pimpay.LocalFileTodoRepository
@@ -75,7 +73,9 @@ object Main extends IOApp {
 //      response <- todo jsonedOr404()
 //    } yield response
 
-  }.orNotFound
+  }
+    .orNotFound
+    .handleError(e => Response[IO]( status=Status(501), body=Stream(e.toString()).through(text.utf8Encode) ) )
 
   def run(args: List[String]): IO[ExitCode] =
     BlazeServerBuilder[IO]
