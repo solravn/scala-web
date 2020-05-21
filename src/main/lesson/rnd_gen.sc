@@ -7,8 +7,7 @@ import scala.util.Random
 // ADT
 case class Point(x:Int, y:Int)
 case class Color(c:String)  // сделайте одно из нескольких цветов
-case class Pixel(pos:Point, c:Option[String] = None) // None = transparent
-case class Pixell(pos:Point)
+case class Pixel(pos:Point, col: Color, opacity: Option[String] = None)
 case class Bitmap(pixels: Vector[Pixel])
 
 // Generator
@@ -22,11 +21,17 @@ implicit def strRnd: Rnd[String] = () => List.tabulate(10)(
   _ => Random.alphanumeric.filter(_.isLetter).head
 ).mkString
 
-// Products
-//implicit def optionGen[A]: Generic
-implicit def someRnd[A : Rnd]: Rnd[Some[A]] = () => Some(implicitly[Rnd[A]].run())
-implicit val noneRnd: Rnd[None.type] = () => None
+// Domain
+implicit def colorRnd: Rnd[Color] = () => {
+  val colors = List("red", "blue", "orange")
+  Color(colors(Random.nextInt(colors.length)))
+}
 
+// Products
+implicit def optionRnd[A : Rnd]: Rnd[Option[A]] =
+  () => Option(implicitly[Rnd[A]].run())
+implicit def vectorRnd[A : Rnd]: Rnd[Vector[A]] =
+  () => Vector.fill(10)(implicitly[Rnd[A]].run)
 
 // Shapeless
 implicit val hnilRnd: Rnd[HNil] = () => HNil
@@ -37,21 +42,13 @@ implicit def genericRnd[A, R <: HList]
   (implicit gen: Generic.Aux[A,R], rndRepr: Lazy[Rnd[R]]): Rnd[A] =
     () => gen.from(rndRepr.value.run())
 
-implicit def coproductRnd[L,R <: Coproduct]
-  (implicit rndL: Rnd[L], rndR: Lazy[Rnd[R]]): Rnd[L :+: R] =
-    () => ???
+def random[A : Rnd]: A = implicitly[Rnd[A]].run()
 
-trait GenericRnd[A] {
-  def apply[R <: HList]()(implicit gen: Generic.Aux[A,R], rndRepr: Rnd[R]): A
-    = gen.from(rndRepr.run())
-}
-def random[A]: GenericRnd[A] = new GenericRnd[A]{}
-
-random[Point]()
-random[Pixell]()
+random[Point]
+random[Pixel]
 //Generic[Option[Int]]
 //Generic.materialize[Some[Int], Int :: HNil]
-//random[Option[Int]]()
+random[Bitmap]
 //random[(String,String)].apply()
 //random[Some[String]].apply()
 //random[(Int, String, Int)].apply()
@@ -77,15 +74,3 @@ random[Pixell]()
 //    lazily[Rnd[HNil]](hnilRnd)
 //  )
 //)
-
-//show { reify {
-//  random[(Int, Int)].apply()
-//}}
-//show { reify {
-//  random[Pixell].apply()
-//}}
-
-
-
-
-
