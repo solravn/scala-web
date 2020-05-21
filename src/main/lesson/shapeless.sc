@@ -26,9 +26,16 @@ length((3, 5, 1))
 
 // HW
 //def length2[A, R <: HList](implicit gen: Generic.Aux[A,R], len: Len[R]): Int = len.length()
-//def length2[A](implicit gen: Generic.Aux[A,R], len: Len[R]): Int = len.length()
-//
-//length2[SignalStatus]
+
+
+trait GenericLen[A] {
+  def apply[R <: HList]()(implicit gen: Generic.Aux[A,R], l: Len[R]): Int = l.length()
+}
+
+def length2[A]: GenericLen[A] = new GenericLen[A]{}
+
+length2[SignalStatus]() // 3
+length2[(Int, Int)]()   // 2
 
 
 
