@@ -26,5 +26,8 @@ libraryDependencies ++= Seq(
   "org.slf4j" % "slf4j-simple" % "1.7.22",
   "org.slf4j" % "slf4j-api" % "1.7.22"
 )
+libraryDependencies ++= Seq(
+  "com.chuusai" %% "shapeless" % "2.3.2",
+)
 
 scalacOptions ++= Seq("-Ypartial-unification")
