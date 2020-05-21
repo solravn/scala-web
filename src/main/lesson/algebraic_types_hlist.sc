@@ -39,17 +39,17 @@ val ss = StatusSignal(54, "api.pimpay.ru", status = true)
 encode(tuple2hlist(StatusSignal.unapply(ss).get))
 
 //// HW
-trait Counter[A] {
-  def count(): Int
+trait Len[A] {
+  def length(): Int
 }
 
-implicit def anyCounter[A]: Counter[A] = () => 1
-implicit val hnilCounter: Counter[HNil] = () => 0
-implicit def hlistCounter[H : Counter, T <: HList : Counter]: Counter[H :: T] =
-  () => implicitly[Counter[H]].count + implicitly[Counter[T]].count
+implicit def genLen[A]: Len[A] = () => 1
+implicit val hnilLen: Len[HNil] = () => 0
+implicit def hlistLen[H : Len, T <: HList : Len]: Len[H :: T] =
+  () => implicitly[Len[H]].length + implicitly[Len[T]].length
 
-def length[A <: HList : Counter](hlist: A): Int =
-  implicitly[Counter[A]].count()
+def length[A <: HList : Len](hlist: A): Int =
+  implicitly[Len[A]].length()
 
 
 length( tuple2hlist( (1,2,3) ))
