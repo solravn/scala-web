@@ -1,39 +1,36 @@
 import shapeless._
-import shapeless.:+:
-import shapeless.CNil
 import scala.reflect.runtime.universe._
 import scala.util.Random
 
-// ADT
-case class Point(x:Int, y:Int)
-case class Color(c:String)  // сделайте одно из нескольких цветов
-case class Pixel(pos:Point, col: Color, opacity: Option[String] = None)
-case class Bitmap(pixels: Vector[Pixel])
-
-// Generator
+// generator
 trait Rnd[A] {
   def run(): A
 }
 
-// Primitives
-implicit def intRnd: Rnd[Int] = () => Random.nextInt
-implicit def strRnd: Rnd[String] = () => List.tabulate(10)(
-  _ => Random.alphanumeric.filter(_.isLetter).head
+// helpers
+def randomInt(r: Range): Int = r(Random.nextInt(r.last - r.head + 1))
+
+// primitives
+implicit def intRnd: Rnd[Int] = () => randomInt(1 to 9999)
+implicit def strRnd: Rnd[String] = () => List.fill(randomInt(3 to 10))(
+  (_:Int) => Random.alphanumeric.filter(_.isLetter).head
 ).mkString
+implicit def boolRnd: Rnd[Boolean] = () => Random.nextBoolean()
+implicit def doubleRnd: Rnd[Double] = () => Random.nextDouble()
 
-// Domain
-implicit def colorRnd: Rnd[Color] = () => {
-  val colors = List("red", "blue", "orange")
-  Color(colors(Random.nextInt(colors.length)))
-}
+// products
+implicit def optionRnd[A](implicit aRnd: Rnd[A], boolRnd: Rnd[Boolean]): Rnd[Option[A]] = () =>
+  if (boolRnd.run()) Option(aRnd.run()) else Option.empty[A]
+implicit def eitherRnd[E,A](implicit eRnd: Rnd[E], aRnd: Rnd[A], boolRnd: Rnd[Boolean]): Rnd[Either[E,A]] = () =>
+  if (boolRnd.run()) Right(aRnd.run()) else Left(eRnd.run())
+implicit def listRnd[A : Rnd]: Rnd[List[A]] = () =>
+  List.fill(1 + Random.nextInt(randomInt(2 to 4)))(implicitly[Rnd[A]].run)
+implicit def vectorRnd[A](implicit lr: Rnd[List[A]]): Rnd[Vector[A]] = () =>
+  lr.run().toVector
+implicit def mapRnd[K,V](implicit kr: Rnd[K], lr: Rnd[List[V]]): Rnd[Map[K,V]] = () =>
+  lr.run().zipWithIndex.map(t2 => kr.run() -> t2._1).toMap
 
-// Products
-implicit def optionRnd[A : Rnd]: Rnd[Option[A]] =
-  () => Option(implicitly[Rnd[A]].run())
-implicit def vectorRnd[A : Rnd]: Rnd[Vector[A]] =
-  () => Vector.fill(10)(implicitly[Rnd[A]].run)
-
-// Shapeless
+// shapeless
 implicit val hnilRnd: Rnd[HNil] = () => HNil
 implicit def hlistRnd[H, T <: HList]
   (implicit rndHead: Rnd[H], rndTail: Lazy[Rnd[T]]): Rnd[H :: T] =
@@ -44,7 +41,20 @@ implicit def genericRnd[A, R <: HList]
 
 def random[A : Rnd]: A = implicitly[Rnd[A]].run()
 
-random[Point]
+// ADT
+case class Point(x:Int, y:Int)
+case class Color(c: String)
+case class Pixel(pos:Point, col: Color, opacity: Option[String] = None)
+case class Bitmap(pixels: Vector[Pixel])
+
+implicit def colorRnd: Rnd[Color] = () => {
+  val colors = List("red", "blue", "orange", "green")
+  Color(colors(Random.nextInt(colors.length)))
+}
+
+
+random[Map[String,Either[String,Point]]]
+
 random[Pixel]
 //Generic[Option[Int]]
 //Generic.materialize[Some[Int], Int :: HNil]
