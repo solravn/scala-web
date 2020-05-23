@@ -11,10 +11,8 @@ trait Rnd[A] {
 def randomInt(r: Range): Int = r(Random.nextInt(r.last - r.head + 1))
 
 // primitives
-implicit def intRnd: Rnd[Int] = () => randomInt(1 to 9999)
-implicit def strRnd: Rnd[String] = () => List.fill(randomInt(3 to 10))(
-  (_:Int) => Random.alphanumeric.filter(_.isLetter).head
-).mkString
+implicit def intRnd: Rnd[Int] = () => randomInt { 1 to 9999 }
+implicit def strRnd: Rnd[String] = () => List.fill(randomInt(3 to 15))(Random.nextPrintableChar).mkString
 implicit def boolRnd: Rnd[Boolean] = () => Random.nextBoolean()
 implicit def doubleRnd: Rnd[Double] = () => Random.nextDouble()
 
@@ -52,9 +50,7 @@ implicit def colorRnd: Rnd[Color] = () => {
   Color(colors(Random.nextInt(colors.length)))
 }
 
-
-random[Map[String,Either[String,Point]]]
-
+random[Map[Int, Either[String, Pixel]]]
 random[Pixel]
 //Generic[Option[Int]]
 //Generic.materialize[Some[Int], Int :: HNil]
