@@ -52,13 +52,7 @@ implicit def colorRnd: Rnd[Color] = () => {
 
 random[Map[Int, Either[String, Pixel]]]
 random[Pixel]
-//Generic[Option[Int]]
-//Generic.materialize[Some[Int], Int :: HNil]
 random[Bitmap]
-//random[(String,String)].apply()
-//random[Some[String]].apply()
-//random[(Int, String, Int)].apply()
-//random[((String, Int), Int)].apply()
 
 //random[Pixell].apply()(
 //  Generic.materialize[Pixell, Point :: HNil],
