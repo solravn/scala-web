@@ -1,6 +1,8 @@
 import shapeless._
 import shapeless.labelled.FieldType
 import syntax.singleton._
+import scala.reflect.runtime.universe.show
+import scala.reflect.runtime.universe.reify
 
 sealed trait JSON
 case object JsNull extends JSON
@@ -74,53 +76,89 @@ encode(Pixel(Point(1,2), "red"))
 /*************** decode ********************/
 
 type DecodeError = String
-
 trait Decoder[A] {
   def decode(json: JSON): Either[DecodeError,A]
 }
-//class StrDecoder extends Decoder[String] {
-//  override def decode(json: JSON): Either[DecodeError,String] = json match {
-//    case JsString(s) => Right(s)
-//    case _ => Left("String was expected")
-//  }
-//}
-//case class NumDecoder() extends Decoder[Double] {
-//  override def decode(json: JSON): Either[DecodeError,Double] = json match {
-//    case JsNumber(n) => Right(n)
-//    case _ => Left("Number was expected")
-//  }
-//}
-implicit def intDecoder: Decoder[Int] = {
+
+implicit def intDecoder: Decoder[Int] = r => r match {
   case JsNumber(n) => Right(n.toInt)
-  case _ => Left("Number was expected")
+  case _ => { println(r);
+    Left("JsNumber was expected") }
+}
+implicit def strDecoder: Decoder[String] = {
+  case JsString(s) => Right(s)
+  case _ => Left("JsString was expected")
 }
 
-case class IntDecoder() extends Decoder[Int] {
-  override def decode(json: JSON): Either[DecodeError,Int] = json match {
-    case JsNumber(n) => Right(n.toInt)
-    case _ => Left("Number was expected")
-  }
-}
-
-case class ArrDecoder[A] extends Decoder[Vector[A]] {
-  override def decode(json: JSON)(implicit valDec: Decoder[A]): Either[DecodeError, Vector[A]] = json match {
-    case JsArray(values) => {
-      val mapped = values.map(vj => valDec.decode(vj))
-
+implicit def arrDecoder[A](implicit valDec: Decoder[A]): Decoder[Vector[A]] = {
+  case JsArray(vec) => vec
+    .foldLeft(Right(Vector.empty[A]).asInstanceOf[Either[DecodeError,Vector[A]]]) {
+      (acc, js) => valDec.decode(js) match {
+        case Right(a) => acc.map(_ :+ a)
+        case Left(e) => Left(e)
+      }
     }
-    case _ => Left("Array was expected")
+  case _ => Left("JsArray expected")
+}
+
+implicit def objDecoder[V](implicit valDec: Decoder[V]): Decoder[Map[String,V]] = {
+  case JsObj(map) => map
+    .foldLeft(Right(Map.empty[String,V]).asInstanceOf[Either[DecodeError,Map[String,V]]]) {
+      (acc, t2) => valDec.decode(t2._2) match {
+        case Right(v) => acc.map(_ + (t2._1 -> v))
+        case Left(e) => Left(e)
+      }
+    }
+  case _ => Left("JsObj expected")
+}
+
+// shapeless
+implicit val hnilDec: Decoder[HNil] = _ => Right(HNil)
+implicit def hconsDec[K <: Symbol, H, T <: HList]
+  (implicit
+     witness: Witness.Aux[K],
+     headDec: Lazy[Decoder[H]],
+     tailDec: Decoder[T]
+  ): Decoder[FieldType[K, H] :: T] = (json: JSON) => {
+    println(witness.value.name)
+    headDec.value.decode(json) match {
+      case Right(h) => {
+        val k = witness.value.name
+        println(h)
+        ???
+      }
+      case Left(e) => Left(e)
+    }
   }
-}
+
+// to CC
+implicit def toCC[CC <: Product, HL <: HList]
+  (implicit lgen: LabelledGeneric.Aux[CC,HL], enc: Lazy[Decoder[HL]]): Decoder[CC] =
+    json => {
+      enc.value.decode(json) match {
+        case Right(hlist) => Right(lgen.from(hlist))
+        case Left(e) => Left(e)
+      }
+    }
+
+def decode[A : Decoder](json: JSON): Either[DecodeError,A] = implicitly[Decoder[A]].decode(json)
+
+val jj = JsObj(Map("x" -> JsNumber(1.0), "y" -> JsNumber(2.0)))
+
+decode[Point](jj)
+//LabelledGeneric[Point]
+//toCC[Point,FieldType[Symbol,Int] :: FieldType[String,Int] :: CNil].apply(jj)
 
 
-def decodeArr(j: JSON): Either[DecodeError, Point] = {
-  val d = ArrDecoder[Int]()
-  d.decode(j).map(v => Point(v(0), v(1)))
-}
-
-decodeArr(JsArray(Vector(JsNumber(2), JsNumber(3))))
-
-NumDecoder().decode(JsNumber(1))
+//val jsn1 = JsArray(Vector(JsNumber(2), JsNumber(3)))
+//val jsn2 = JsArray(Vector(JsNumber(3), JsString("asf")))
+//val jsObj1 = JsObj(Map("kk" -> JsNumber(1)))
+//val jsObj2 = JsObj(Map("kk" -> JsNumber(1), "kek" -> JsString("asd")))
+//
+//arrDecoder[Int].decode(jsn1)
+//arrDecoder[Int].decode(jsn2)
+//objDecoder[Int].decode(jsObj1)
+//objDecoder[Int].decode(jsObj2)
 
 //decode(JsObj(Map("a" -> JsNumber(1))))
 //decode(JsObj(Map("p" -> JsNumber(2))))
