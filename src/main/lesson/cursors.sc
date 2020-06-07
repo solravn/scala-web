@@ -1,9 +1,3 @@
-import shapeless._
-import shapeless.labelled.{FieldType, field}
-import syntax.singleton._
-import scala.reflect.runtime.universe.show
-import scala.reflect.runtime.universe.reify
-import scala.reflect.runtime.universe.typeOf
 
 sealed trait JSON
 case object JsNull extends JSON
@@ -13,82 +7,20 @@ case class JsBool(b: Boolean) extends JSON
 case class JsArray(values: Vector[JSON]) extends JSON
 case class JsObj(fields: Map[String,JSON]) extends JSON
 
-def stringify(json:JSON):String = {
-  def q(s:String):String = "\"" + s + "\"" // TODO: normal enquote
-  json match {
-    case JsNull        => "null"
-    case JsBool(b)     => if (b) "true" else "false"
-    case JsNumber(n)   => n.toString()
-    case JsString(s)   => q(s)
-    case JsArray(v)    => "[" + (v map {stringify} mkString ",") +"]"
-    case JsObj(fields) => "{" + (fields map { case (k,v) => q(k) + ":" + stringify(v)} mkString ",") + "}"
-  }
-}
-
-/*************** encode ********************/
-
-trait JsonEnc[A] {
-  def enc(a: A): JSON
-}
-
-// basic
-implicit def numEnc[A : Numeric]: JsonEnc[A] = a => JsNumber(implicitly[Numeric[A]].toDouble(a))
-implicit val strEnc: JsonEnc[String] = JsString(_)
-implicit val boolEnc: JsonEnc[Boolean] = JsBool(_)
-
-implicit def optionEnc[A : JsonEnc]: JsonEnc[Option[A]] =
-  _.fold[JSON](JsNull)(implicitly[JsonEnc[A]].enc)
-
-// shapeless
-implicit val hnilEnc: JsonEnc[HNil] = _ => JsObj(Map())
-
-implicit def hconsEnc[K <: Symbol, H, T <: HList]
-  (implicit
-   witness: Witness.Aux[K],
-   headEnc: Lazy[JsonEnc[H]],
-   tailEnc: JsonEnc[T]
-  ): JsonEnc[FieldType[K, H] :: T] =
-    (hlist: FieldType[K, H] :: T) => {
-
-      val h = headEnc.value.enc(hlist.head)
-      val k = witness.value.name
-
-      JsObj(Map(k -> h) ++ tailEnc.enc(hlist.tail).asInstanceOf[JsObj].fields)
-    }
-
-// from CC
-implicit def fromCC[CC <: Product, LH <: HList]
-  (implicit lgen: LabelledGeneric.Aux[CC,LH], enc: Lazy[JsonEnc[LH]]): JsonEnc[CC] =
-    cc => enc.value.enc(lgen.to(cc))
-
-// summoner
-def encode[A : JsonEnc](a: A): JSON = implicitly[JsonEnc[A]].enc(a)
-
-// run
-val j1 = JsObj(Map("x" -> JsNumber(1), "y" -> JsNumber(2)))
-
-case class Point(x: Int, y: Int)
-case class Pixel(p: Point, c: String)
-//LabelledGeneric[Point]
-
-val p1 = encode(Point(1,2))
-val px1 = encode(Pixel(Point(1,2), "red"))
-
-/*************** decode ********************/
-
 type DecodeError = String
 
-// *** Cursor ***
-
 sealed trait Cursor {
+
   def focus: Option[JSON]
   def succeed: Boolean
+
   def keys: Option[Iterable[String]]
   def downField(k: String): Cursor
   def downArray: Cursor
   def next: Cursor
-  def as[A](implicit d: Decoder[A]): Either[DecodeError,A] = d.tryDecode(this)
-  def get[A](k: String)(implicit d: Decoder[A]): Either[DecodeError,A] = downField(k).as[A]
+
+  final def as[A](implicit d: Decoder[A]): Either[DecodeError,A] = d.tryDecode(this)
+  final def get[A](k: String)(implicit d: Decoder[A]): Either[DecodeError,A] = downField(k).as[A]
 }
 
 case class FailedCursor(err: DecodeError) extends Cursor {
@@ -123,6 +55,7 @@ abstract class HCursor extends Cursor {
 
   override def next: Cursor = FailedCursor("Can't next")
 }
+
 object HCursor {
   def fromJson(json: JSON): HCursor = TopCursor(json)
 }
@@ -145,8 +78,6 @@ case class ArrayCursor(arr: JsArray, index: Int) extends HCursor {
   }
 }
 
-// *** Decoder ***
-
 trait Decoder[A] {
   self =>
 
@@ -160,10 +91,12 @@ trait Decoder[A] {
   def map[B](f: A => B): Decoder[B] = flatMap(a => Decoder.unit(f(a)));
 
   def flatMap[B](f: A => Decoder[B]): Decoder[B] = new Decoder[B] {
+
     final def apply(c: HCursor): Either[DecodeError,B] = self(c) match {
       case Right(a)    => f(a)(c)
       case l @ Left(_) => l.asInstanceOf[Either[DecodeError,B]]
     }
+
     override def tryDecode(c: Cursor): Either[DecodeError,B] = self.tryDecode(c) match {
       case Right(a)    => f(a).tryDecode(c)
       case l @ Left(_) => l.asInstanceOf[Either[DecodeError,B]]
@@ -173,7 +106,9 @@ trait Decoder[A] {
 
 object Decoder {
   def unit[A](v: A): Decoder[A] = _ => Right(v)
-  def apply[A](implicit instance: Decoder[A]): Decoder[A] = instance
+
+  final def apply[A](implicit instance: Decoder[A]): Decoder[A] = instance
+
   def instance[A](f: HCursor => Either[DecodeError,A]): Decoder[A] = f(_)
 }
 
@@ -206,6 +141,7 @@ implicit def mapDecoder[V](implicit valDec: Decoder[V]): Decoder[Map[String,V]] 
 }
 
 implicit def arrDecoder[A](implicit valDec: Decoder[A]): Decoder[Vector[A]] = new Decoder[Vector[A]] {
+  self =>
   override def apply(c: HCursor): Either[DecodeError,Vector[A]] = {
     val current = c.downArray
     if (current.succeed) decodeValues(current.asInstanceOf[HCursor])
@@ -214,38 +150,35 @@ implicit def arrDecoder[A](implicit valDec: Decoder[A]): Decoder[Vector[A]] = ne
   def decodeValues(c: HCursor): Either[DecodeError,Vector[A]] = valDec(c) match {
     case Right(a) =>
       val next = c.next
-      if (next.succeed) decodeValues(next.asInstanceOf[HCursor]) match {
-        case Right(b) => Right(a +: b)
-        case l @ Left(_) => l.asInstanceOf[Either[DecodeError, Vector[A]]]
-      }
-      else Right(Vector(a))
+      if (next.succeed) {
+        decodeValues(next.asInstanceOf[HCursor]) match {
+          case Right(b) => Right(a +: b)
+          case l @ Left(_) => l.asInstanceOf[Either[DecodeError, Vector[A]]]
+        }
+      } else Right(Vector(a))
     case l @ Left(_) => l.asInstanceOf[Either[DecodeError, Vector[A]]]
   }
 }
 
-// shapeless
-implicit val hnilDec: Decoder[HNil] = Decoder.unit(HNil)
-implicit def hconsDec[K <: Symbol, H, T <: HList]
-  (implicit witness: Witness.Aux[K], headDec: Lazy[Decoder[H]], tailDec: Decoder[T]): Decoder[FieldType[K, H] :: T] =
-    Decoder.instance(c => for {
-      h <- c.get[H](witness.value.name)(headDec.value)
-      t <- tailDec(c)
-    } yield field[K](h) :: t)
-
-// to CC
-implicit def genericDecoder[CC <: Product, HL <: HList]
-  (implicit gen: LabelledGeneric.Aux[CC,HL], enc: Lazy[Decoder[HL]]): Decoder[CC] =
-    Decoder.instance(c => enc.value(c) match {
-      case Right(hl) => Right(gen.from(hl))
-      case Left(e) => Left(e)
-    })
-
 def decode[A : Decoder](json: JSON): Either[DecodeError,A] =
   implicitly[Decoder[A]].apply(HCursor.fromJson(json))
 
-val jj = JsObj(Map("x" -> JsNumber(1.0), "y" -> JsNumber(2.0)))
+val js1 = JsString("asd")
+val jo1 = JsObj(Map("x" -> JsString("a")))
+val jo2 = JsObj(Map("a" -> JsObj(Map("b" -> JsNumber(2), "c" -> JsNumber(3)))))
+val jo3 = JsObj(Map("a" -> JsArray(Vector(JsNumber(2), JsNumber(3)))))
+val ja1 = JsArray(Vector(JsNumber(2), JsNumber(3)))
 
-decode[Point](p1)
-decode[Pixel](px1)
-decode[Point](jj)
+decode(JsString("asf"))
 
+HCursor.fromJson(ja1).as[Vector[Int]]
+
+HCursor.fromJson(jo1).as[Map[String,String]]
+
+HCursor.fromJson(jo3).as[Map[String,Vector[Int]]]
+HCursor.fromJson(jo3).as[Map[String,Vector[String]]]
+
+HCursor.fromJson(jo2).downField("a").downField("g")
+HCursor.fromJson(jo2).downField("a").downField("b").as[Int]
+
+HCursor.fromJson(jo2).as[Map[String,Map[String,Int]]]
