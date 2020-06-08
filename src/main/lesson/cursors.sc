@@ -40,12 +40,12 @@ abstract class HCursor extends Cursor {
     case j @ JsObj(fields) =>
       if (fields.contains(k)) ObjectCursor(j,k)
       else FailedCursor(s"Key $k not found")
-    case _ => FailedCursor("DownField failed")
+    case _ => FailedCursor("DownField failed: value is not an object")
   }
 
   override final def downArray: Cursor = value match {
-    case a @ JsArray(values) => ArrayCursor(a, values.indices.head)
-    case _ => FailedCursor("DownArray failed")
+    case a @ JsArray(values) if values.nonEmpty => ArrayCursor(a, values.indices.head)
+    case _ => FailedCursor("DownArray failed: value is empty or not JsArray")
   }
 
   override final def keys: Option[Iterable[String]] = value match {
@@ -62,7 +62,6 @@ object HCursor {
 
 case class TopCursor(value: JSON) extends HCursor {
   override def focus: Option[JSON] = Some(value)
-  override def succeed: Boolean = true
 }
 case class ObjectCursor(obj: JsObj, key: String) extends HCursor {
   override def value: JSON = obj.fields(key)
@@ -168,10 +167,14 @@ val jo1 = JsObj(Map("x" -> JsString("a")))
 val jo2 = JsObj(Map("a" -> JsObj(Map("b" -> JsNumber(2), "c" -> JsNumber(3)))))
 val jo3 = JsObj(Map("a" -> JsArray(Vector(JsNumber(2), JsNumber(3)))))
 val ja1 = JsArray(Vector(JsNumber(2), JsNumber(3)))
+val ja2 = JsArray(Vector())
+val jt  = JsArray(Vector(JsObj(Map("x" -> JsString("a")))))
 
-decode(JsString("asf"))
+//decode(JsString("asf"))
 
-HCursor.fromJson(ja1).as[Vector[Int]]
+HCursor.fromJson(ja2).as[Vector[Int]]
+HCursor.fromJson(ja2).as[Map[String,Int]]
+HCursor.fromJson(jt).as[Vector[Map[String,String]]]
 
 HCursor.fromJson(jo1).as[Map[String,String]]
 

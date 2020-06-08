@@ -1,9 +1,9 @@
 import shapeless._
 import shapeless.labelled.{FieldType, field}
 import syntax.singleton._
-import scala.reflect.runtime.universe.show
-import scala.reflect.runtime.universe.reify
-import scala.reflect.runtime.universe.typeOf
+//import scala.reflect.runtime.universe.show
+//import scala.reflect.runtime.universe.reify
+//import scala.reflect.runtime.universe.typeOf
 
 sealed trait JSON
 case object JsNull extends JSON
@@ -108,12 +108,12 @@ abstract class HCursor extends Cursor {
     case j @ JsObj(fields) =>
       if (fields.contains(k)) ObjectCursor(j,k)
       else FailedCursor(s"Key $k not found")
-    case _ => FailedCursor("DownField failed")
+    case _ => FailedCursor("DownField failed: value is not an object")
   }
 
   override final def downArray: Cursor = value match {
-    case a @ JsArray(values) => ArrayCursor(a, values.indices.head)
-    case _ => FailedCursor("DownArray failed")
+    case a @ JsArray(values) if values.nonEmpty => ArrayCursor(a, values.indices.head)
+    case _ => FailedCursor("DownArray failed: value is empty or not JsArray")
   }
 
   override final def keys: Option[Iterable[String]] = value match {
@@ -129,7 +129,6 @@ object HCursor {
 
 case class TopCursor(value: JSON) extends HCursor {
   override def focus: Option[JSON] = Some(value)
-  override def succeed: Boolean = true
 }
 case class ObjectCursor(obj: JsObj, key: String) extends HCursor {
   override def value: JSON = obj.fields(key)
@@ -141,7 +140,7 @@ case class ArrayCursor(arr: JsArray, index: Int) extends HCursor {
     if (arr.values.indices.contains(index)) Some(arr.values(index)) else None
   override def next: Cursor = arr.values.indices.find(_ > index) match {
     case Some(nextIndex) => ArrayCursor(arr, nextIndex)
-    case _ => FailedCursor("Array is empty")
+    case _ => FailedCursor("Array index is out of bound!")
   }
 }
 
@@ -149,18 +148,17 @@ case class ArrayCursor(arr: JsArray, index: Int) extends HCursor {
 
 trait Decoder[A] {
   self =>
-
   def apply(c: HCursor): Either[DecodeError,A]
 
   def tryDecode(c: Cursor): Either[DecodeError,A] = c match {
     case h: HCursor => apply(h)
-    case _ => Left("Attempt to decode value on failed cursor")
+    case _ => Left("Attempt to decode value on failed cursor!")
   }
 
   def map[B](f: A => B): Decoder[B] = flatMap(a => Decoder.unit(f(a)));
 
   def flatMap[B](f: A => Decoder[B]): Decoder[B] = new Decoder[B] {
-    final def apply(c: HCursor): Either[DecodeError,B] = self(c) match {
+    def apply(c: HCursor): Either[DecodeError,B] = self(c) match {
       case Right(a)    => f(a)(c)
       case l @ Left(_) => l.asInstanceOf[Either[DecodeError,B]]
     }
@@ -173,7 +171,6 @@ trait Decoder[A] {
 
 object Decoder {
   def unit[A](v: A): Decoder[A] = _ => Right(v)
-  def apply[A](implicit instance: Decoder[A]): Decoder[A] = instance
   def instance[A](f: HCursor => Either[DecodeError,A]): Decoder[A] = f(_)
 }
 
@@ -226,7 +223,11 @@ implicit def arrDecoder[A](implicit valDec: Decoder[A]): Decoder[Vector[A]] = ne
 // shapeless
 implicit val hnilDec: Decoder[HNil] = Decoder.unit(HNil)
 implicit def hconsDec[K <: Symbol, H, T <: HList]
-  (implicit witness: Witness.Aux[K], headDec: Lazy[Decoder[H]], tailDec: Decoder[T]): Decoder[FieldType[K, H] :: T] =
+  (implicit
+   witness: Witness.Aux[K],
+   headDec: Lazy[Decoder[H]],
+   tailDec: Decoder[T]
+  ): Decoder[FieldType[K, H] :: T] =
     Decoder.instance(c => for {
       h <- c.get[H](witness.value.name)(headDec.value)
       t <- tailDec(c)
@@ -244,8 +245,13 @@ def decode[A : Decoder](json: JSON): Either[DecodeError,A] =
   implicitly[Decoder[A]].apply(HCursor.fromJson(json))
 
 val jj = JsObj(Map("x" -> JsNumber(1.0), "y" -> JsNumber(2.0)))
+val je = JsObj(Map("x" -> JsNumber(1.0), "z" -> JsNumber(2.0)))
+val ja = JsArray(Vector())
+
+HCursor.fromJson(ja).as[Vector[Int]]
 
 decode[Point](p1)
 decode[Pixel](px1)
 decode[Point](jj)
+decode[Point](je)
 
