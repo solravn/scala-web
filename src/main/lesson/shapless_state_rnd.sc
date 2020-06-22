@@ -66,9 +66,12 @@ trait Rnd[A] {
 // instances
 implicit val intRnd: Rnd[Int] = () => Random.int
 implicit val strRnd: Rnd[String] = () => Random.fixedStr(6)
+implicit val boolRnd: Rnd[Boolean] = () => Random.boolean
+implicit val doubleRnd: Rnd[Double] = () => Random.double
 implicit val colorRnd: Rnd[Color] = () => Random.fixedStr(6).map(Color(_))
 implicit def optRnd[A : Rnd]: Rnd[Option[A]] = () => implicitly[Rnd[A]].gen().map(Option(_))
-implicit def vecRnd[A : Rnd]: Rnd[Vector[A]] = () => Random.listOf(implicitly[Rnd[A]].gen(), 2).map(_.toVector)
+implicit def vecRnd[A : Rnd]: Rnd[Vector[A]] = () => Random.listOf(implicitly[Rnd[A]].gen(), 3).map(_.toVector)
+implicit def listRnd[A : Rnd]: Rnd[List[A]] = () => Random.listOf(implicitly[Rnd[A]].gen(), 3)
 // shapeless
 implicit val hnilRnd: Rnd[HNil] = () => State.unit(HNil)
 implicit def hconsRnd[H, T <: HList](implicit hr: Rnd[H], tr: Lazy[Rnd[T]]): Rnd[H :: T] = () => for {
