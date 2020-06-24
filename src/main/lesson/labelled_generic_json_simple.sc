@@ -135,9 +135,9 @@ implicit def hconsDec[K <: Symbol, H, T <: HList]
    tailDec: Decoder[T]
   ): Decoder[FieldType[K, H] :: T] =
   json => for {
-    value  <- JsonHelper.get(json, witness.value.name)
-    h      <- headDec.value.decode(value)
-    t      <- tailDec.decode(json)
+    v  <- JsonHelper.get(json, witness.value.name)
+    h  <- headDec.value.decode(v)
+    t  <- tailDec.decode(json)
   } yield labelled.field[K](h) :: t
 
 // to CC
